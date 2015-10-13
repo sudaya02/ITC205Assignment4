@@ -1,0 +1,159 @@
+Read ‘Why Programs Fail’ (Zeller) - Chapter 6 - Log book.
+Also Chapter 7.3 - Tracking Dependencies
+Chapter 8 - Observation
+
+Debugging Bug 1 - Incorrect payout level
+
+First run
+Hypothesis	Winnings incorrectly calculated
+Prediction	All winnings amounts would be incorrect
+Experiment	Play games and observe winning amounts
+Observation	Winning amounts are not incorrect
+Conclusion	Wrong hypothesis. Winnings calculations are correct.
+
+Second run
+Hypothesis	Balance incorrectly calculated
+Prediction	Balance after adding winnings is not correct
+Experiment	Play games and observe winning amounts and balance changes
+Observation	Balance goes down when lose by bet amount. When win with one match, balance stays the same. When win with two matches, balance goes up but not by correct amount.
+Conclusion	Balance is incorrectly calculated. Further investigation needed.
+
+Third run
+Hypothesis	Bet not refunded when winning
+Prediction	Balance after winning is incorrect by bet amount as bet amount not refunded.
+Experiment	Play games and observe winning amounts and balance changes
+Observation	Balance is indeed off by bet amount after all win types. Issue is with refunding bet after win.
+Conclusion	Issue is in Game.playRound() with the taking bet and receiving winnings. 
+
+After above theories tested, automated test was developed to test the calculated result (winnings) and the resulting player balance after 0, 1, 2 and 3 matches.
+
+The transition from sane to infected occurs in the Game.playround() method when the player receives winnings. The result is correct but the bet is not refunded resulting in an incorrect balance. 
+
+
+Debugging Bug 2 - Player cannot reach betting limit
+
+Issue is with game ending before player has reached betting limit. Logically this is an issue with Player.balanceExceedsLimit.
+
+First run
+Hypothesis	Issue with Player.balanceExceedsLimitBy(int amount)
+Prediction	Game ends when player balance still exceeds limit by bet amount
+Experiment	Run game and observe final balance, bet amount 5, limit 0. 
+Observation	Final balance is 5, which is still bet amount (5) above betting limit (0).
+Conclusion	There is an issue with Player.balanceExceedsLimitBy(int amount)
+
+After this run an automated test was developed that plays rounds and loses until the nominated method returns false. Then the remaining balance is checked. This demonstrates the bug. A further simplification is possible though.
+
+Second run
+Hypothesis	Issue with Player.balanceExceedsLimitBy(int amount)
+Prediction	If we initialise a player with a balance of X, and a limit of 0, Player.balanceExceedsLimitBy(X) will be false
+Experiment	Create an automated test creating a player and checking above stated prediction
+Observation	Test fails where player balance does not exceed zero by starting balance of 10, which is incorrect.
+Conclusion	There is an issue with Player.balanceExceedsLimitBy(int amount).
+
+Simplified test shows same result. issue two is contained within the balance exceeds limit by method.
+
+
+Debugging Bug 3 - Game overall odds appear incorrect
+
+This is a larger scale issue and needs to be narrowed down.  To start, an automated test case has been developed which picks the same value over and over again and plays for a specified number of rounds and checks the result.
+
+First run
+Hypothesis	Win/loss ratio is out by a specified amount
+Prediction	If a large number of rounds are played with same pick and win and loss rates calculated, the win/loss ratio should converge
+Experiment	Run an automated test using same pick over a large number (say 1000) rounds.
+Observation	Win/loss ratio converges to zero or infinity
+Conclusion	Incorrect hypothesis as two outcomes are noted and no convergence appears.
+
+In running the automated test for the above hypothesis it was noted that the dice values do not change after the first round, and that the first result is repeated infinitely. Bug 4 was then identified and this will be resolved first to see if it resolves this Bug. 
+
+
+Debugging Bug 4 - Dice seem to always roll the same after first roll.
+
+It has already been observed that game.getDiceValues() returns the same after every round which is incorrect behaviour.
+It has also been noted that the winnings amounts correspond to the reported dice values correctly.
+It is believed that there is an issue with Dice behaviour in returning random values. 
+We will therefore test the Dice in some automated tests.
+
+First run
+Hypothesis	Dice.roll() not returning different values
+Prediction	If we do a large number of rolls and collect the results in an array, the resulting array will not contain all dice values
+Experiment	Automated test that does 5000 rolls and collects results in an array, then checks all values were rolled.
+Observation	Dice did indeed roll different values. It did not however, roll a SPADE.
+Conclusion	Issue with dice.roll() but not as expected. It is returning different values.
+
+We have in the above identified that there is an issue with dice.roll which needs resolving in that it does not return SPADE ever. However the value rolled is changing and therefore it is not the cause of this bug. It will affect bug 3 however.
+
+Second run
+Hypothesis	The problem is with Dice.getValue()
+Prediction	After a large enough number of repeats to account for chance, Dice.getValue() will not return the same as dice.roll(). Dice.getValue() will return same value.
+Experiment	Automated test that does 100 rolls and checks getValue() returns the same as roll()
+Observation	Test fails. Dice.getValue() returns different value from that rolled, but consistently same value.
+Conclusion	Correct hypothesis. Issue is with dice.getValue() not varying and not same as dice.roll().
+
+
+At this point we have identified the methods in which each bug occurs and we have tests to verify all fixes once in place.
+
+We need to resolve bug 4 before we can fully verify and resolve bug 3.
+
+
+Resolving Bug 1 - Incorrect payout.
+
+The resolution is that we need to refund the bet amount if a win occurs. As the bet is taken within the playRound() method and winnings are refunded in same method, it makes sense to only take the bet amount from the player if they do no win. 
+
+After resolving the issue as described, the automated payout tests for bug 1 all pass. UAT testing for this bug also passes. No new bugs are identified.
+
+
+Resolving Bug 2 - Player cannot reach betting limit.
+
+We need to inspect the balance exceeds limit by method. Inspection shows that both balance exceeds limit and balance exceeds limit by using a ‘>’ (greater than) comparator. In this case we don’t mind if the balance is equal to the limit, so we should change this to ‘>=‘ (greater than or equal to).
+
+After making this change, out automated tests pass. The UAT test for this also passes. Rerunning Bug1 tests still pass, so no new bugs are identified.
+
+Resolving Bug 4 - Dice rolling same values.
+
+We need to resolve bug 4 before resolving bug 3 as it is related to betting odds and the dice need to function correctly first.
+
+We will inspect dice.getValue() to see why the value is not changing. 
+On inspection, it is noted that the ‘value’ property of a Dice is initiated in the constructor but not revised on a roll. This is a definite bug.
+
+After resolving this issue by assigning the rolled value to the value property and returning that property, we find that the roll() and getValue() methods align and the getValue() method starts to return new values.
+
+We find the automated test for this method now passes, as does the UAT test. However the test that the dice returns all values still fails and this will affect bug 3 which we will now revisit.  
+
+
+Revisiting Bug 3 - Win/loss ratio.
+
+We now repeat the tests for the win/loss ratio having resolved the issue with the dice values not changing. 
+
+The tests show that the win loss ratio now appears to approximate 90%, so it is converging, however it is too high. 
+
+We note however that the test that all dice values are rolled is failing still, so we will inspect the roll method to find out why no SPADE is being rolled.
+
+The roll() method relies on DiceValue.getRandom(). This method uses Random.nextInt(), passing in the value of the SPADE ordinal. This excludes the spade from ever being rolled as nextInt(N) returns a random int between 0 (inclusive) and N (exclusive). We therefore pass in values().length to enable the spade ordinal to be returned. This enables the automated test for all diceValues being rolled to pass.
+
+
+Continuing Testing Bug 3.
+
+Having resolved this bug we further test bug 3 with our automated tests. The win loss ratio is still too high, approximating a ratio of 0.75.
+
+We need a new hypothesis.
+
+Second run
+Hypothesis	DiceValue.getRandom() not random enough. 
+Prediction	Automated testing of DiceValue.getRandom() will show uneven results
+Experiment	Develop automated test of DiceValue.getRandom() and check occurrences of each face is roughly 1/6
+Observation	With 10,000 rolls fraction is within 1% of expected fraction. With 500 rolls is within 3%
+Conclusion	Incorrect hypothesis, it is random enough.
+
+Let’s change tact. Perhaps the calculations are wrong for the ratio. The odds should be that the player wins 42% of the time. Assuming our odds are correct which the above test shows they should be, perhaps our win/loss ratio should be assessed. We are not concerned with the win/loss ratio, we are concerned with the total win rate. 
+
+Third Run
+Hypothesis	Calculate wins/total rounds percentage is incorrect and wins/total rounds should be 42%.
+Prediction	Automated testing will show win rate of 42% +/- 3% after 1000 rounds.
+Experiment	Revise automated test to calculate wins/total rounds percentage.	
+Observation	Prediction correct, revised test passes.
+Conclusion	Issue is with win rate logic.
+
+After revising the automated test it appears that the game is working correctly with the correct odds. The remaining part of this Bug was related to the automated test. 
+
+Running the UAT on this bug also passes. Running all automated tests shows no new bugs, so regression testing is also passing. 
